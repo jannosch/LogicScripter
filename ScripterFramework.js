@@ -303,7 +303,7 @@ function setHidden(boolean, params) {
         if (paramObject.type !== "expand") {
 
             paramObject.hidden = boolean;
-            updateList[PluginParameters.indexOf(paramObject[i])] = true;
+            updateList.set(paramObject[i], true);
 
             // If Object is Menu-Header and gets hidden
             // Recursively hide all Sub-parameters
@@ -313,6 +313,7 @@ function setHidden(boolean, params) {
                 }
             } else if (paramObject.type === "menu") {
                 if (paramObject.subParams !== undefined) {
+                    // Just hide all visible Parts of subParams
                     setHidden(boolean, paramObject.subParams[paramObject.lastIndex]);
                 }
             }
@@ -354,33 +355,37 @@ function getCopyNumber(paramObject) {
 
 /** METHOD USED BY FRAMEWORK
  *  Adds the subParameter to the menuListener-array
+ *  param: ParamObject, Menu header
+ *  subParam: ParamObject, Child
+ *  onMenuIndex: number, only if header is menu.
  **/
-function addMenuListener(param, subParam, onIndex) {
+function addMenuListener(param, subParam, onMenuIndex) {
     // If MenuListener of momentary
-    if (onIndex === undefined) {
-        if (menuListener[PluginParameters.indexOf(param)] === undefined) {
-            menuListener[PluginParameters.indexOf(param)] = [subParam];
+    if (onMenuIndex === undefined) {
+
+        if (!menuListener.has(param)) {
+            menuListener.set(param, [subParam]);
         } else {
-            menuListener[PluginParameters.indexOf(param)].push(subParam);
+            menuListener.get(param).push(subParam);
         }
 
         // If MenuListener of menu
     } else {
         // If First MenuListener of Parameter
-        if (menuListener[PluginParameters.indexOf(param)] === undefined) {
-            menuListener[PluginParameters.indexOf(param)] = [];
+        if (!menuListener.has(param)) {
+            menuListener.set(param, []);
         }
 
+        // Save the last selected Index
         if (param.lastIndex === undefined) {
             param.lastIndex = param.defaultValue;
         }
 
-        if (menuListener[PluginParameters.indexOf(param)][onIndex] === undefined) {
-            menuListener[PluginParameters.indexOf(param)][onIndex] = [subParam];
+        if (menuListener.get(param)[onMenuIndex] === undefined) {
+            menuListener.get(param)[onMenuIndex] = [subParam];
         } else {
-            menuListener[PluginParameters.indexOf(param)][onIndex].push(subParam);
+            menuListener.get(param)[onMenuIndex].push(subParam);
         }
-        JSON.stringify("Array: " + menuListener[PluginParameters.indexOf(param)]);
     }
 }
 
@@ -422,7 +427,7 @@ function expandParameter(paramObject) {
                 copy[i].name = copy[i].originalName.replace("%", param.copies);
                 copy[i].copyIndex = i; // Necessary?
                 addParameter(copy[i], copyIndex);
-                updateList[copyIndex] = true;
+                updateList.set(copy[i], true);
                 copyIndex++;
             }
 
@@ -498,10 +503,10 @@ function isDefault(paramObject) {
  * Can be changed back to true manually for certain parameter
  **/
 function resetUpdateList() {
-    updateList = [];
+    updateList = new Map();
     for (let i = 0; i < PluginParameters.length; i++) {
         if (PluginParameters[i].type !== "momentary")
-            updateList[i] = false;
+            updateList.set(PluginParameters[i], false);
     }
 }
 
@@ -554,23 +559,24 @@ function ParameterChanged(param, value) {
     // Cancels if Parameter got reduced (re-running the script)
     if (param >= PluginParameters.length) return;
 
-    // Handle updates
-    if (!(updateList[param] === undefined || updateList[param] === true)) {
-        updateList[param] = true;
+    let paramObject = PluginParameters[param];
+
+    // Handle updates and catches Update-Loops
+    if (!(updateList.get(paramObject) === undefined || updateList.get(paramObject) === true)) {
+        updateList.set(paramObject, true);
         return;
     }
 
-    let paramObject = PluginParameters[param];
-
-    //Trace("ParameterChanged: " + paramObject.name + ", value: " + value);
+    // Trace("ParameterChanged: \"" + paramObject.name + "\", Value: " + value);
 
     // Runs MenuListener if existing
-    if (menuListener[param] !== undefined) {
+    if (menuListener.has(paramObject)) {
         if (paramObject.type === "momentary") {
-            toggleVisible(menuListener[param]);
+            toggleVisible(menuListener.get(paramObject));
         } else {
-            setHidden(true, menuListener[param][paramObject.lastIndex]);
-            setHidden(false, menuListener[param][value]);
+            // If Param is Menu
+            setHidden(true, menuListener.get(paramObject)[paramObject.lastIndex]);
+            setHidden(false, menuListener.get(paramObject)[value]);
             paramObject.lastIndex = value;
         }
     }
@@ -632,8 +638,8 @@ function ParameterChanged(param, value) {
 /** VARIABLES USED BY FRAMEWORK **/
 var PluginParameters = [];          // manual way to add Parameters USE INSTEAD: function addParameter(param)
 var NeedsTimingInfo = true;         // always get timing info
-let updateList = [];                // Array for the Parameter-indexes which should (not) be changed on next update
-let menuListener = [];              // Contains all subMenu-Objects for every Parameter-number
+let updateList = new Map();                // Array for the Parameter-indexes which should (not) be changed on next update
+let menuListener = new Map();      // Contains all subMenu-Objects for every Parameter-number
 let learnNote;                      // Index of Parameter which learns MIDI-Note
 let playing;                        // Boolean if track is playing right now
 let expandParams = new Map();       // String -> Parameter for all expanded Parameters
